@@ -16,6 +16,7 @@ import numpy as np
 from youtube_transcript_api import YouTubeTranscriptApi
 from fake_useragent import UserAgent
 import random
+import requests
 
 app = Flask(__name__)
 CORS(app)  # Allow requests from your Vercel frontend
@@ -112,29 +113,38 @@ def video_recipe():
         frames_analyzed = 0
 
         video_url_direct = None
+        video_file_path = None
         duration = 60
 
-        # Try with ScraperAPI
-        for attempt in range(2):
-            try:
-                print(f"🔄 Attempt {attempt + 1}/2 to fetch video via ScraperAPI...")
-                ydl_opts = get_yt_dlp_opts_with_scraper_api()
+        # Download video using ScraperAPI + yt-dlp
+        try:
+            print(f"🔄 Downloading video via ScraperAPI...")
 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
-                    video_url_direct = info['url']
-                    duration = info.get('duration', 60)
-                    print(f"✅ Video URL obtained via ScraperAPI on attempt {attempt + 1}")
-                    break  # Success!
-            except Exception as e:
-                print(f"⚠️ ScraperAPI attempt {attempt + 1} failed: {e}")
-                if attempt < 1:
-                    import time
-                    time.sleep(2)  # Wait before retry
-                continue
+            # Use ScraperAPI to render the YouTube page and get video info
+            scraper_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url=https://www.youtube.com/watch?v={video_id}&render=true"
 
-        if not video_url_direct:
-            raise Exception("Failed to get video URL via ScraperAPI after 2 attempts")
+            # Download video file directly with yt-dlp
+            ydl_opts = {
+                'format': 'worst[height<=480]',
+                'quiet': False,
+                'no_warnings': False,
+                'outtmpl': f'/tmp/video_{video_id}.mp4',
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android'],
+                    }
+                },
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
+                duration = info.get('duration', 60)
+                video_file_path = f'/tmp/video_{video_id}.mp4'
+                print(f"✅ Video downloaded to {video_file_path}")
+
+        except Exception as e:
+            print(f"⚠️ Video download failed: {e}")
+            raise Exception(f"Failed to download video: {e}")
 
         try:
 
@@ -144,8 +154,8 @@ def video_recipe():
 
             print(f"🎬 Extracting frames every {frame_interval_seconds}s (max {max_frames} frames)")
 
-            # Open video
-            cap = cv2.VideoCapture(video_url_direct)
+            # Open video (from downloaded file)
+            cap = cv2.VideoCapture(video_file_path)
             fps = cap.get(cv2.CAP_PROP_FPS) or 30
             frame_interval = int(fps * frame_interval_seconds)
 
@@ -256,6 +266,14 @@ Create recipe for PRIMARY dish only.'''
             messages=[{"role": "user", "content": prompt_parts}]
         )
 
+        # Cleanup temp video file
+        if video_file_path and os.path.exists(video_file_path):
+            try:
+                os.remove(video_file_path)
+                print(f"🗑️  Cleaned up temp file: {video_file_path}")
+            except:
+                pass
+
         return jsonify({
             'response': response.content[0].text,
             'frames_analyzed': frames_analyzed,
@@ -268,6 +286,14 @@ Create recipe for PRIMARY dish only.'''
         print(f"❌ Error: {e}")
         import traceback
         traceback.print_exc()
+
+        # Cleanup temp video file on error
+        if 'video_file_path' in locals() and video_file_path and os.path.exists(video_file_path):
+            try:
+                os.remove(video_file_path)
+            except:
+                pass
+
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
