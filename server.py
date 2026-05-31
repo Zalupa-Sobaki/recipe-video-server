@@ -20,42 +20,33 @@ import random
 app = Flask(__name__)
 CORS(app)  # Allow requests from your Vercel frontend
 
-# Free public SOCKS5 proxies (rotating list - update periodically)
-FREE_PROXIES = [
-    'socks5://51.79.50.22:9300',
-    'socks5://45.76.97.132:9300',
-    'socks5://103.149.162.195:80',
-]
+# ScraperAPI configuration
+SCRAPER_API_KEY = os.environ.get('SCRAPER_API_KEY', 'be56ced4c59fc7c3dad6c220419b7c18')
+SCRAPER_API_PROXY = f'http://scraperapi:{SCRAPER_API_KEY}@proxy-server.scraperapi.com:8001'
 
-def get_yt_dlp_opts_with_proxies(is_aggressive=True):
-    """Generate yt-dlp options with proxy rotation and aggressive bypass"""
+def get_yt_dlp_opts_with_scraper_api():
+    """Generate yt-dlp options with ScraperAPI proxy"""
     ua = UserAgent()
 
     opts = {
         'format': 'worst[height<=480]',
         'quiet': True,
         'no_warnings': True,
+        'proxy': SCRAPER_API_PROXY,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios', 'web'],
+                'player_client': ['android'],
                 'player_skip': ['webpage'],
             }
         },
         'http_headers': {
-            'User-Agent': ua.random if is_aggressive else 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip',
+            'User-Agent': ua.random,
             'Accept-Language': 'en-US,en;q=0.9',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Encoding': 'gzip, deflate',
-            'DNT': '1',
         },
     }
 
-    # Try with a random proxy
-    if FREE_PROXIES and random.random() > 0.5:
-        proxy = random.choice(FREE_PROXIES)
-        opts['proxy'] = proxy
-        print(f"🌐 Using proxy: {proxy}")
-
+    print(f"🌐 Using ScraperAPI proxy to bypass YouTube blocking...")
     return opts
 
 @app.route('/health', methods=['GET'])
@@ -123,27 +114,27 @@ def video_recipe():
         video_url_direct = None
         duration = 60
 
-        # Try multiple times with different configurations
-        for attempt in range(3):
+        # Try with ScraperAPI
+        for attempt in range(2):
             try:
-                print(f"🔄 Attempt {attempt + 1}/3 to fetch video...")
-                ydl_opts = get_yt_dlp_opts_with_proxies(is_aggressive=(attempt > 0))
+                print(f"🔄 Attempt {attempt + 1}/2 to fetch video via ScraperAPI...")
+                ydl_opts = get_yt_dlp_opts_with_scraper_api()
 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
                     video_url_direct = info['url']
                     duration = info.get('duration', 60)
-                    print(f"✅ Video URL obtained on attempt {attempt + 1}")
+                    print(f"✅ Video URL obtained via ScraperAPI on attempt {attempt + 1}")
                     break  # Success!
             except Exception as e:
-                print(f"⚠️ Attempt {attempt + 1} failed: {e}")
-                if attempt < 2:
+                print(f"⚠️ ScraperAPI attempt {attempt + 1} failed: {e}")
+                if attempt < 1:
                     import time
-                    time.sleep(1)  # Wait before retry
+                    time.sleep(2)  # Wait before retry
                 continue
 
         if not video_url_direct:
-            raise Exception("Failed to get video URL after 3 attempts")
+            raise Exception("Failed to get video URL via ScraperAPI after 2 attempts")
 
         try:
 
