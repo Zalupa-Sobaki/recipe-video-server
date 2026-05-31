@@ -123,11 +123,11 @@ def video_recipe():
             # Use ScraperAPI to render the YouTube page and get video info
             scraper_url = f"http://api.scraperapi.com?api_key={SCRAPER_API_KEY}&url=https://www.youtube.com/watch?v={video_id}&render=true"
 
-            # Download video file directly with yt-dlp
+            # Download video file directly with yt-dlp (optimized for speed)
             ydl_opts = {
-                'format': 'best[height<=480]/worst',  # More flexible format selection
-                'quiet': False,
-                'no_warnings': False,
+                'format': 'worst[height<=360]/worst',  # Lowest quality for fastest download
+                'quiet': True,  # Less verbose logging
+                'no_warnings': True,
                 'outtmpl': f'/tmp/video_{video_id}.%(ext)s',
                 'extractor_args': {
                     'youtube': {
@@ -149,9 +149,9 @@ def video_recipe():
 
         try:
 
-            # Determine frame interval
-            frame_interval_seconds = 0.8 if is_short else 2.0
-            max_frames = 150 if is_short else 300
+            # Determine frame interval (optimized for speed)
+            frame_interval_seconds = 2.0 if is_short else 3.0  # Reduced for faster processing
+            max_frames = 30 if is_short else 50  # Reduced for faster processing
 
             print(f"🎬 Extracting frames every {frame_interval_seconds}s (max {max_frames} frames)")
 
@@ -169,9 +169,9 @@ def video_recipe():
                     break
 
                 if frame_count % frame_interval == 0:
-                    frame = cv2.resize(frame, (640, 360))
+                    frame = cv2.resize(frame, (480, 270))  # Smaller size for faster processing
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    success, buffer = cv2.imencode('.jpg', frame_rgb, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                    success, buffer = cv2.imencode('.jpg', frame_rgb, [cv2.IMWRITE_JPEG_QUALITY, 60])  # Lower quality for speed
 
                     if success:
                         img_b64 = base64.b64encode(buffer).decode('utf-8')
