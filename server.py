@@ -14,9 +14,49 @@ import yt_dlp
 import cv2
 import numpy as np
 from youtube_transcript_api import YouTubeTranscriptApi
+from fake_useragent import UserAgent
+import random
 
 app = Flask(__name__)
 CORS(app)  # Allow requests from your Vercel frontend
+
+# Free public SOCKS5 proxies (rotating list - update periodically)
+FREE_PROXIES = [
+    'socks5://51.79.50.22:9300',
+    'socks5://45.76.97.132:9300',
+    'socks5://103.149.162.195:80',
+]
+
+def get_yt_dlp_opts_with_proxies(is_aggressive=True):
+    """Generate yt-dlp options with proxy rotation and aggressive bypass"""
+    ua = UserAgent()
+
+    opts = {
+        'format': 'worst[height<=480]',
+        'quiet': True,
+        'no_warnings': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios', 'web'],
+                'player_skip': ['webpage'],
+            }
+        },
+        'http_headers': {
+            'User-Agent': ua.random if is_aggressive else 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate',
+            'DNT': '1',
+        },
+    }
+
+    # Try with a random proxy
+    if FREE_PROXIES and random.random() > 0.5:
+        proxy = random.choice(FREE_PROXIES)
+        opts['proxy'] = proxy
+        print(f"🌐 Using proxy: {proxy}")
+
+    return opts
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -60,41 +100,52 @@ def video_recipe():
         print(f"✅ Video ID: {video_id}")
         print(f"🎬 Is Short: {is_short}")
 
-        # Step 1: Fetch transcript
+        # Step 1: Fetch transcript with retry
         transcript_text = ""
-        try:
-            api_yt = YouTubeTranscriptApi()
-            result = api_yt.fetch(video_id)
-            transcript_text = ' '.join([snippet.text for snippet in result.snippets])
-            print(f"✅ Transcript fetched: {len(transcript_text)} chars")
-        except Exception as e:
-            print(f"⚠️ Transcript failed: {e}")
+        for attempt in range(2):
+            try:
+                print(f"📝 Fetching transcript (attempt {attempt + 1}/2)...")
+                api_yt = YouTubeTranscriptApi()
+                result = api_yt.fetch(video_id)
+                transcript_text = ' '.join([snippet.text for snippet in result.snippets])
+                print(f"✅ Transcript fetched: {len(transcript_text)} chars")
+                break
+            except Exception as e:
+                print(f"⚠️ Transcript attempt {attempt + 1} failed: {e}")
+                if attempt < 1:
+                    import time
+                    time.sleep(0.5)
 
         # Step 2: Extract frames with yt-dlp + opencv
         image_data = []
         frames_analyzed = 0
 
-        try:
-            ydl_opts = {
-                'format': 'worst[height<=480]',
-                'quiet': True,
-                'no_warnings': True,
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['android', 'web'],
-                        'player_skip': ['webpage', 'configs'],
-                    }
-                },
-                'http_headers': {
-                    'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                },
-            }
+        video_url_direct = None
+        duration = 60
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
-                video_url_direct = info['url']
-                duration = info.get('duration', 60)
+        # Try multiple times with different configurations
+        for attempt in range(3):
+            try:
+                print(f"🔄 Attempt {attempt + 1}/3 to fetch video...")
+                ydl_opts = get_yt_dlp_opts_with_proxies(is_aggressive=(attempt > 0))
+
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+                    video_url_direct = info['url']
+                    duration = info.get('duration', 60)
+                    print(f"✅ Video URL obtained on attempt {attempt + 1}")
+                    break  # Success!
+            except Exception as e:
+                print(f"⚠️ Attempt {attempt + 1} failed: {e}")
+                if attempt < 2:
+                    import time
+                    time.sleep(1)  # Wait before retry
+                continue
+
+        if not video_url_direct:
+            raise Exception("Failed to get video URL after 3 attempts")
+
+        try:
 
             # Determine frame interval
             frame_interval_seconds = 0.8 if is_short else 2.0
