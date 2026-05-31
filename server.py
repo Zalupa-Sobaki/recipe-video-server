@@ -125,10 +125,10 @@ def video_recipe():
 
             # Download video file directly with yt-dlp
             ydl_opts = {
-                'format': 'worst[height<=480]',
+                'format': 'best[height<=480]/worst',  # More flexible format selection
                 'quiet': False,
                 'no_warnings': False,
-                'outtmpl': f'/tmp/video_{video_id}.mp4',
+                'outtmpl': f'/tmp/video_{video_id}.%(ext)s',
                 'extractor_args': {
                     'youtube': {
                         'player_client': ['android'],
@@ -139,7 +139,8 @@ def video_recipe():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
                 duration = info.get('duration', 60)
-                video_file_path = f'/tmp/video_{video_id}.mp4'
+                ext = info.get('ext', 'mp4')
+                video_file_path = f'/tmp/video_{video_id}.{ext}'
                 print(f"✅ Video downloaded to {video_file_path}")
 
         except Exception as e:
