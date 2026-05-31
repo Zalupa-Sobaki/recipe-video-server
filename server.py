@@ -79,6 +79,16 @@ def video_recipe():
                 'format': 'worst[height<=480]',
                 'quiet': True,
                 'no_warnings': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['android', 'web'],
+                        'player_skip': ['webpage', 'configs'],
+                    }
+                },
+                'http_headers': {
+                    'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; GB) gzip',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                },
             }
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
