@@ -149,9 +149,9 @@ def video_recipe():
 
         try:
 
-            # Determine frame interval (optimized for speed)
-            frame_interval_seconds = 2.0 if is_short else 3.0  # Reduced for faster processing
-            max_frames = 30 if is_short else 50  # Reduced for faster processing
+            # Determine frame interval (original frequency for accuracy)
+            frame_interval_seconds = 0.8 if is_short else 2.0  # Original frequency
+            max_frames = 150 if is_short else 300  # Original max frames
 
             print(f"🎬 Extracting frames every {frame_interval_seconds}s (max {max_frames} frames)")
 
